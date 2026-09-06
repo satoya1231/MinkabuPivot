@@ -30,6 +30,7 @@ class LauncherRepository(private val context: Context) {
         val set = favorites().toMutableSet()
         if (value) set += app.key else set -= app.key
         prefs.edit().putStringSet("favorites", set).apply()
+        ClockWidgetProvider.refresh(context)
     }
 
     fun folders(): List<AppFolder> = runCatching {

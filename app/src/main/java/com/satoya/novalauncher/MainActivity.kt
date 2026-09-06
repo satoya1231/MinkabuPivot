@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -44,14 +45,32 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 class MainActivity : ComponentActivity() {
+    private lateinit var widgetHost: DesktopWidgetHost
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme(colorScheme = darkColorScheme()) { LauncherScreen() } }
+        widgetHost = DesktopWidgetHost(this)
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                LauncherScreen(widgetHost)
+            }
+        }
     }
+
+    override fun onStart() {
+        super.onStart()
+        widgetHost.startListening()
+    }
+
+    override fun onStop() {
+        widgetHost.stopListening()
+        super.onStop()
+    }
+
 }
 
 @Composable
-fun LauncherScreen() {
+fun LauncherScreen(widgetHost: DesktopWidgetHost) {
     val context = LocalContext.current
     val repo = remember { LauncherRepository(context) }
     var apps by remember { mutableStateOf(repo.loadApps()) }
@@ -61,14 +80,22 @@ fun LauncherScreen() {
     var folderBeingEdited by remember { mutableStateOf<AppFolder?>(null) }
     var isCreatingFolder by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<AppFolder?>(null) }
+    var appToRemoveFromFolder by remember { mutableStateOf<Pair<AppFolder, AppEntry>?>(null) }
     var appToAssignToFolder by remember { mutableStateOf<AppEntry?>(null) }
     var isWidgetPickerVisible by remember { mutableStateOf(false) }
-    var isClockWidgetPlaced by remember { mutableStateOf(true) }
+    var clockWidgetId by remember { mutableStateOf(widgetHost.storedClockWidgetId()) }
     var expandedFolderIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var menuExpanded by remember { mutableStateOf(false) }
     val shown = apps.filter { query.isBlank() || it.label.contains(query, true) }
     val folderAppKeys = folders.flatMapTo(mutableSetOf<String>()) { it.appKeys }
     val registered = shown.filter { it.key in favorites && it.key !in folderAppKeys }
+
+    LaunchedEffect(Unit) {
+        if (clockWidgetId == null) {
+            clockWidgetId = widgetHost.installClockWidget()
+        }
+    }
+
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -122,10 +149,13 @@ fun LauncherScreen() {
             }
         }
         Spacer(Modifier.height(12.dp))
-        if (isClockWidgetPlaced) {
-            ClockWidget()
-        }
+        DesktopWidgetSlot(
+            widgetHost = widgetHost,
+            appWidgetId = clockWidgetId
+        )
         Spacer(Modifier.height(12.dp))
+        SecondClockBanner()
+        Spacer(Modifier.height(10.dp))
         OutlinedTextField(query, { query = it }, label = { Text("アプリを検索") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
         LazyVerticalGrid(
@@ -164,6 +194,9 @@ fun LauncherScreen() {
                         },
                         onEdit = { folderBeingEdited = folder },
                         onDelete = { folderToDelete = folder },
+                        onRemoveFromFolder = { app ->
+                            appToRemoveFromFolder = folder to app
+                        },
                         onLaunch = { app -> repo.launch(app) }
                     )
                 }
@@ -265,6 +298,24 @@ fun LauncherScreen() {
         )
     }
 
+    appToRemoveFromFolder?.let { (folder, app) ->
+        AlertDialog(
+            onDismissRequest = { appToRemoveFromFolder = null },
+            title = { Text("フォルダから削除") },
+            text = { Text("「${app.label}」を「${folder.name}」から削除しますか？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    repo.saveFolder(folder.copy(appKeys = folder.appKeys - app.key))
+                    folders = repo.folders()
+                    appToRemoveFromFolder = null
+                }) { Text("削除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { appToRemoveFromFolder = null }) { Text("キャンセル") }
+            }
+        )
+    }
+
     appToAssignToFolder?.let { app ->
         FolderChoiceDialog(
             app = app,
@@ -291,15 +342,21 @@ fun LauncherScreen() {
         WidgetPickerDialog(
             onDismiss = { isWidgetPickerVisible = false },
             onPlaceClock = {
-                isClockWidgetPlaced = true
-                isWidgetPickerVisible = false
+                val installedId = widgetHost.installClockWidget()
+                if (installedId != null) {
+                    clockWidgetId = installedId
+                    isWidgetPickerVisible = false
+                    true
+                } else {
+                    false
+                }
             }
         )
     }
 }
 
 @Composable
-private fun ClockWidget() {
+private fun SecondClockBanner() {
     var now by remember { mutableStateOf(LocalDateTime.now()) }
 
     LaunchedEffect(Unit) {
@@ -311,35 +368,46 @@ private fun ClockWidget() {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
-                    style = MaterialTheme.typography.displaySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    now.format(DateTimeFormatter.ofPattern("yyyy年M月d日（E）", Locale.JAPAN)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
             Text(
-                "時計",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                text = now.format(DateTimeFormatter.ofPattern("HH:mm:ss")),
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = now.format(DateTimeFormatter.ofPattern("yyyy年M月d日（E）", Locale.JAPAN)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun DesktopWidgetSlot(
+    widgetHost: DesktopWidgetHost,
+    appWidgetId: Int?
+) {
+    if (appWidgetId != null) {
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(218.dp),
+            factory = { viewContext ->
+                widgetHost.createClockWidgetView(viewContext, appWidgetId)
+                    ?: android.widget.FrameLayout(viewContext)
+            }
+        )
     }
 }
 
@@ -351,6 +419,7 @@ private fun FolderBar(
     onToggleExpanded: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onRemoveFromFolder: (AppEntry) -> Unit,
     onLaunch: (AppEntry) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -405,7 +474,8 @@ private fun FolderBar(
                         app = app,
                         isRegistered = true,
                         onLaunch = { onLaunch(app) },
-                        onToggleRegistration = null
+                        onToggleRegistration = null,
+                        onLongClick = { onRemoveFromFolder(app) }
                     )
                 }
             }
@@ -510,16 +580,20 @@ private fun FolderDialog(
 @Composable
 private fun WidgetPickerDialog(
     onDismiss: () -> Unit,
-    onPlaceClock: () -> Unit
+    onPlaceClock: () -> Boolean
 ) {
+    var placementFailed by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("ウィジェットをデスクトップに追加") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("使用するウィジェットを選択してください")
+                Text("デスクトップに表示するウィジェットを選択してください")
                 Card(
-                    onClick = onPlaceClock,
+                    onClick = {
+                        placementFailed = !onPlaceClock()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -539,6 +613,13 @@ private fun WidgetPickerDialog(
                         )
                         Text("配置", style = MaterialTheme.typography.labelLarge)
                     }
+                }
+                if (placementFailed) {
+                    Text(
+                        "ウィジェットを配置できませんでした。Nova Launcherを既定のホームアプリに設定してから再試行してください。",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         },
