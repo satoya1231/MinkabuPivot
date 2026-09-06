@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import java.util.UUID
@@ -54,48 +55,65 @@ fun LauncherScreen() {
     var isCreatingFolder by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<AppFolder?>(null) }
     var expandedFolderIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var menuExpanded by remember { mutableStateOf(false) }
     val shown = apps.filter { query.isBlank() || it.label.contains(query, true) }
     val folderAppKeys = folders.flatMapTo(mutableSetOf<String>()) { it.appKeys }
     val registered = shown.filter { it.key in favorites && it.key !in folderAppKeys }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Nova Launcher", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(query, { query = it }, label = { Text("アプリを検索") }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(10.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        apps = repo.loadApps()
-                        favorites = repo.favorites()
-                        folders = repo.folders()
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("更新") }
-                Button(
-                    onClick = { isCreatingFolder = true },
-                    modifier = Modifier.weight(1f)
-                ) { Text("フォルダ") }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { requestHome(context) },
-                    modifier = Modifier.weight(1f)
-                ) { Text("既定のホームに設定", maxLines = 1) }
-                Button(
-                    onClick = { context.startActivity(Intent(Settings.ACTION_SETTINGS)) },
-                    modifier = Modifier.weight(1f)
-                ) { Text("設定") }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Nova Launcher",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "メニュー")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("フォルダを作成") },
+                        onClick = {
+                            menuExpanded = false
+                            isCreatingFolder = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("アプリ一覧を更新") },
+                        onClick = {
+                            menuExpanded = false
+                            apps = repo.loadApps()
+                            favorites = repo.favorites()
+                            folders = repo.folders()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("既定のホームに設定") },
+                        onClick = {
+                            menuExpanded = false
+                            requestHome(context)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("端末の設定を開く") },
+                        onClick = {
+                            menuExpanded = false
+                            context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                        }
+                    )
+                }
             }
         }
         Spacer(Modifier.height(12.dp))
+        OutlinedTextField(query, { query = it }, label = { Text("アプリを検索") }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(10.dp))
         LazyVerticalGrid(
             columns = GridCells.Fixed(1),
             modifier = Modifier.weight(1f),
