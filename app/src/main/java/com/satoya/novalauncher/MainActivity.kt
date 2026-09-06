@@ -305,7 +305,11 @@ private fun FolderDialog(
     onSave: (String, Set<String>) -> Unit
 ) {
     var name by remember(folder?.id) { mutableStateOf(folder?.name.orEmpty()) }
+    var appQuery by remember(folder?.id) { mutableStateOf("") }
     var selectedKeys by remember(folder?.id) { mutableStateOf(folder?.appKeys ?: emptySet()) }
+    val filteredApps = apps.filter {
+        appQuery.isBlank() || it.label.contains(appQuery, ignoreCase = true)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -320,13 +324,25 @@ private fun FolderDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
-                Text("入れるアプリ", style = MaterialTheme.typography.titleSmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("入れるアプリ", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.weight(1f))
+                    Text("${selectedKeys.size}個選択中", style = MaterialTheme.typography.labelMedium)
+                }
                 Spacer(Modifier.height(4.dp))
                 if (apps.isEmpty()) {
                     Text("インストール済みアプリがありません")
                 } else {
+                    OutlinedTextField(
+                        value = appQuery,
+                        onValueChange = { appQuery = it },
+                        label = { Text("アプリを検索") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(4.dp))
                     LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                        lazyItems(apps, key = { it.key }) { app ->
+                        lazyItems(filteredApps, key = { it.key }) { app ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -352,6 +368,13 @@ private fun FolderDialog(
                                 Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
+                    }
+                    if (filteredApps.isEmpty()) {
+                        Text(
+                            "検索条件に一致するアプリはありません",
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
