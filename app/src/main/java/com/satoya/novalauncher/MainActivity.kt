@@ -7,10 +7,8 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -61,20 +59,37 @@ fun LauncherScreen() {
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(query, { query = it }, label = { Text("アプリを検索") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(onClick = {
-                apps = repo.loadApps()
-                favorites = repo.favorites()
-                folders = repo.folders()
-            }) { Text("更新") }
-            Button(onClick = { isCreatingFolder = true }) { Text("フォルダ") }
-            Button(onClick = { requestHome(context) }) { Text("既定のホームに設定") }
-            Button(onClick = { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }) { Text("設定") }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        apps = repo.loadApps()
+                        favorites = repo.favorites()
+                        folders = repo.folders()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text("更新") }
+                Button(
+                    onClick = { isCreatingFolder = true },
+                    modifier = Modifier.weight(1f)
+                ) { Text("フォルダ") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { requestHome(context) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("既定のホームに設定", maxLines = 1) }
+                Button(
+                    onClick = { context.startActivity(Intent(Settings.ACTION_SETTINGS)) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("設定") }
+            }
         }
         Spacer(Modifier.height(12.dp))
         LazyVerticalGrid(
