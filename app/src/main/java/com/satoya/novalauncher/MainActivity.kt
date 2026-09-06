@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import java.time.LocalDateTime
@@ -59,6 +61,7 @@ fun LauncherScreen() {
     var folderBeingEdited by remember { mutableStateOf<AppFolder?>(null) }
     var isCreatingFolder by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<AppFolder?>(null) }
+    var appToAssignToFolder by remember { mutableStateOf<AppEntry?>(null) }
     var expandedFolderIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var menuExpanded by remember { mutableStateOf(false) }
     val shown = apps.filter { query.isBlank() || it.label.contains(query, true) }
@@ -190,7 +193,7 @@ fun LauncherScreen() {
 
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    "アプリ一覧",
+                    "アプリ一覧（長押しでフォルダ登録）",
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(top = 8.dp)
                 )
@@ -200,6 +203,7 @@ fun LauncherScreen() {
                     app = app,
                     isRegistered = app.key in favorites,
                     onLaunch = { repo.launch(app) },
+                    onLongClick = { appToAssignToFolder = app },
                     onToggleRegistration = {
                         repo.setFavorite(app, app.key !in favorites)
                         favorites = repo.favorites()
@@ -247,6 +251,28 @@ fun LauncherScreen() {
             },
             dismissButton = {
                 TextButton(onClick = { folderToDelete = null }) { Text("キャンセル") }
+            }
+        )
+    }
+
+    appToAssignToFolder?.let { app ->
+        FolderChoiceDialog(
+            app = app,
+            folders = folders,
+            onDismiss = { appToAssignToFolder = null },
+            onSelect = { selectedFolder ->
+                folders.forEach { folder ->
+                    val updated = if (folder.id == selectedFolder.id) {
+                        folder.copy(appKeys = folder.appKeys + app.key)
+                    } else {
+                        folder.copy(appKeys = folder.appKeys - app.key)
+                    }
+                    repo.saveFolder(updated)
+                }
+                repo.setFavorite(app, true)
+                folders = repo.folders()
+                favorites = repo.favorites()
+                appToAssignToFolder = null
             }
         )
     }
@@ -462,17 +488,77 @@ private fun FolderDialog(
 }
 
 @Composable
+private fun FolderChoiceDialog(
+    app: AppEntry,
+    folders: List<AppFolder>,
+    onDismiss: () -> Unit,
+    onSelect: (AppFolder) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("フォルダに登録") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("「${app.label}」を入れるフォルダを選択")
+                if (folders.isEmpty()) {
+                    Text(
+                        "フォルダがありません。先に右上メニューからフォルダを作成してください。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    folders.forEach { folder ->
+                        Card(
+                            onClick = { onSelect(folder) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (app.key in folder.appKeys) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                }
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Folder, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text(folder.name, modifier = Modifier.weight(1f))
+                                if (app.key in folder.appKeys) {
+                                    Icon(Icons.Filled.Check, contentDescription = "登録済み")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("キャンセル") }
+        }
+    )
+}
+
+@Composable
 private fun AppBar(
     app: AppEntry,
     isRegistered: Boolean,
     onLaunch: () -> Unit,
-    onToggleRegistration: (() -> Unit)?
+    onToggleRegistration: (() -> Unit)?,
+    onLongClick: (() -> Unit)? = null
 ) {
     Card(
-        onClick = onLaunch,
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp),
+            .height(64.dp)
+            .combinedClickable(
+                onClick = onLaunch,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isRegistered) {
