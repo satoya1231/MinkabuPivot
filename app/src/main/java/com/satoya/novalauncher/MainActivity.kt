@@ -62,6 +62,8 @@ fun LauncherScreen() {
     var isCreatingFolder by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<AppFolder?>(null) }
     var appToAssignToFolder by remember { mutableStateOf<AppEntry?>(null) }
+    var isWidgetPickerVisible by remember { mutableStateOf(false) }
+    var isClockWidgetPlaced by remember { mutableStateOf(true) }
     var expandedFolderIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var menuExpanded by remember { mutableStateOf(false) }
     val shown = apps.filter { query.isBlank() || it.label.contains(query, true) }
@@ -120,7 +122,9 @@ fun LauncherScreen() {
             }
         }
         Spacer(Modifier.height(12.dp))
-        ClockWidget()
+        if (isClockWidgetPlaced) {
+            ClockWidget()
+        }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(query, { query = it }, label = { Text("アプリを検索") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
@@ -203,7 +207,13 @@ fun LauncherScreen() {
                     app = app,
                     isRegistered = app.key in favorites,
                     onLaunch = { repo.launch(app) },
-                    onLongClick = { appToAssignToFolder = app },
+                    onLongClick = {
+                        if (app.packageName == context.packageName) {
+                            isWidgetPickerVisible = true
+                        } else {
+                            appToAssignToFolder = app
+                        }
+                    },
                     onToggleRegistration = {
                         repo.setFavorite(app, app.key !in favorites)
                         favorites = repo.favorites()
@@ -273,6 +283,16 @@ fun LauncherScreen() {
                 folders = repo.folders()
                 favorites = repo.favorites()
                 appToAssignToFolder = null
+            }
+        )
+    }
+
+    if (isWidgetPickerVisible) {
+        WidgetPickerDialog(
+            onDismiss = { isWidgetPickerVisible = false },
+            onPlaceClock = {
+                isClockWidgetPlaced = true
+                isWidgetPickerVisible = false
             }
         )
     }
@@ -482,6 +502,47 @@ private fun FolderDialog(
             ) { Text("保存") }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) { Text("キャンセル") }
+        }
+    )
+}
+
+@Composable
+private fun WidgetPickerDialog(
+    onDismiss: () -> Unit,
+    onPlaceClock: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ウィジェットをデスクトップに追加") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("使用するウィジェットを選択してください")
+                Card(
+                    onClick = onPlaceClock,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "時計・日付",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text("配置", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) { Text("キャンセル") }
         }
     )
