@@ -45,7 +45,8 @@ class FavoritesWidgetService : RemoteViewsService() {
 
         override fun getItemId(position: Int): Long = position.toLong()
 
-        override fun hasStableIds(): Boolean = true
+        // Positions can refer to different apps after favorites are edited.
+        override fun hasStableIds(): Boolean = false
 
         private fun reload() {
             val repository = LauncherRepository(context)

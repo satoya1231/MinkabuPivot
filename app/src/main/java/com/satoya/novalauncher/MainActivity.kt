@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.StarBorder
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -86,6 +88,23 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
     var clockWidgetId by remember { mutableStateOf(widgetHost.storedClockWidgetId()) }
     var expandedFolderIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var menuExpanded by remember { mutableStateOf(false) }
+    fun refreshLauncherState() {
+        apps = repo.loadApps()
+        favorites = repo.favorites()
+        folders = repo.folders()
+        repo.refresh()
+    }
+    fun moveFolder(folderId: String, offset: Int) {
+        val index = folders.indexOfFirst { it.id == folderId }
+        if (index < 0) return
+        val target = (index + offset).coerceIn(0, folders.lastIndex)
+        if (index == target) return
+        val reordered = folders.toMutableList().apply {
+            add(target, removeAt(index))
+        }
+        folders = reordered
+        repo.reorderFolders(reordered.map { it.id })
+    }
     val shown = apps.filter { query.isBlank() || it.label.contains(query, true) }
     val folderAppKeys = folders.flatMapTo(mutableSetOf<String>()) { it.appKeys }
     val registered = shown.filter { it.key in favorites && it.key !in folderAppKeys }
@@ -97,7 +116,13 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
     }
 
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(16.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -126,9 +151,7 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
                         text = { Text("アプリ一覧を更新") },
                         onClick = {
                             menuExpanded = false
-                            apps = repo.loadApps()
-                            favorites = repo.favorites()
-                            folders = repo.folders()
+                            refreshLauncherState()
                         }
                     )
                     DropdownMenuItem(
@@ -194,6 +217,10 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
                         },
                         onEdit = { folderBeingEdited = folder },
                         onDelete = { folderToDelete = folder },
+                        canMoveUp = folders.firstOrNull()?.id != folder.id,
+                        canMoveDown = folders.lastOrNull()?.id != folder.id,
+                        onMoveUp = { moveFolder(folder.id, -1) },
+                        onMoveDown = { moveFolder(folder.id, 1) },
                         onRemoveFromFolder = { app ->
                             appToRemoveFromFolder = folder to app
                         },
@@ -271,8 +298,7 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
                 appKeys.forEach { key ->
                     apps.firstOrNull { it.key == key }?.let { repo.setFavorite(it, true) }
                 }
-                folders = repo.folders()
-                favorites = repo.favorites()
+                refreshLauncherState()
                 isCreatingFolder = false
                 folderBeingEdited = null
             }
@@ -287,7 +313,7 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
             confirmButton = {
                 TextButton(onClick = {
                     repo.deleteFolder(folder.id)
-                    folders = repo.folders()
+                    refreshLauncherState()
                     expandedFolderIds = expandedFolderIds - folder.id
                     folderToDelete = null
                 }) { Text("削除") }
@@ -306,7 +332,7 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
             confirmButton = {
                 TextButton(onClick = {
                     repo.saveFolder(folder.copy(appKeys = folder.appKeys - app.key))
-                    folders = repo.folders()
+                    refreshLauncherState()
                     appToRemoveFromFolder = null
                 }) { Text("削除") }
             },
@@ -331,8 +357,7 @@ fun LauncherScreen(widgetHost: DesktopWidgetHost) {
                     repo.saveFolder(updated)
                 }
                 repo.setFavorite(app, true)
-                folders = repo.folders()
-                favorites = repo.favorites()
+                refreshLauncherState()
                 appToAssignToFolder = null
             }
         )
@@ -419,6 +444,10 @@ private fun FolderBar(
     onToggleExpanded: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
     onRemoveFromFolder: (AppEntry) -> Unit,
     onLaunch: (AppEntry) -> Unit
 ) {
@@ -452,6 +481,12 @@ private fun FolderBar(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
+                IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "フォルダを上へ移動")
+                }
+                IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "フォルダを下へ移動")
+                }
                 IconButton(onClick = onEdit) {
                     Icon(Icons.Filled.Edit, contentDescription = "フォルダを編集")
                 }

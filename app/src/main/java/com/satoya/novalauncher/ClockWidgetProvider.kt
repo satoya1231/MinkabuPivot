@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.RemoteViews
 
 class ClockWidgetProvider : AppWidgetProvider() {
@@ -69,7 +70,20 @@ class ClockWidgetProvider : AppWidgetProvider() {
             )
             val serviceIntent = Intent(context, FavoritesWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                data = android.net.Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                // Make the adapter identity change when the collection changes. This
+                // forces the launcher host to discard rows from the previous dataset.
+                val favoriteKeys = LauncherRepository(context).folders()
+                    .firstOrNull { it.name == "お気に入り" }
+                    ?.appKeys
+                    ?.sorted()
+                    ?.joinToString("|")
+                    .orEmpty()
+                data = Uri.Builder()
+                    .scheme("novalauncher")
+                    .authority("favorites")
+                    .appendPath(appWidgetId.toString())
+                    .appendQueryParameter("keys", favoriteKeys)
+                    .build()
             }
             views.setRemoteAdapter(R.id.widget_favorites_grid, serviceIntent)
             views.setEmptyView(R.id.widget_favorites_grid, R.id.widget_favorites_empty)
